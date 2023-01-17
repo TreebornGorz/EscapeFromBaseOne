@@ -1,0 +1,543 @@
+/*
+
+Dev Notes:
+
+Primary puzzle will be a number base puzzle involving the number above the door is the base (e.g. a two above the door is base two). 
+Entering a solution will transport the player to a different room with a different number over the door which will alter the room slightly.
+Players must recognize alterations to the room in order to find keys and find the number solution for that particular room. (the solution must be entered in it's appropriate base to progress to the next room).
+There will be a number key indicating...
+Each room will have a different number base. Player must reach Room one (base one) in order to escape. The solution for base one is ZERO. This unlocks the door.
+
+To Do:
+Introduce calculator item
+Code widget for base conversion using room number (and calculator entry or keypad combinatuion) as an Interrupt
+Output converted number if keypad combination is incorrect
+Finish widget to check combination and change the room number
+Put clue #2 in the cabinet
+Place numbered keys to open locks (number corresponds to room number)
+
+*/
+
+:: StoryTitle
+Escape From Base One
+
+:: StorySubtitle
+Version: Alpha 0.1
+
+:: StoryData
+{
+    "ifid": "954D2221-3680-494F-A851-E66CC67FA3BC",
+    "format": "SugarCube",
+    "format-version": "2.35.0"
+}
+
+:: UserScript[script]
+{
+    config.history.controls = true; 
+}
+
+postdisplay['fadeIn-text'] = function (taskName) {
+    $('.fadeIn').hide().fadeIn(5000);  
+};
+
+/* Prevents passages from re-executing functions when entering a menu and coming back using [menu] tag */
+window.Fresh = function () {
+    return !tags(previous()).includes('menu');
+};
+
+/* Prevents user from returning to the same passage */
+predisplay["Menu Return"] = function (taskName) {
+    if (! tags().contains("noreturn")) {
+        State.variables.return = passage();
+    }
+};
+
+/*  Keyboard links - Start */
+var KBIntervalID = 0;
+$(document).on(":passagerender", function (ev) {
+    clearInterval(KBIntervalID);
+    UpdateLinks(ev.content);
+    // Search passages for links every 300ms, just in case they get updated, and marks them for key clicks
+    KBIntervalID = setInterval(UpdateLinks, 300);
+});
+// Adds key shortcut indicators to links in passage if there are less than 11 links in the passage.
+function UpdateLinks(Container) {
+    // Enables keyboard shortcuts on passages that do not have the "DisableKeyLinks" tag
+    if (!tags().includes("DisableKeyLinks")) {
+        var Links, i;
+        if (typeof Container === "undefined") {
+            Container = document;
+            Links = $("#passages a").toArray();
+        } else {
+            Links = $(Container).find("a").toArray();
+        }
+        if (Links.length > 0) {
+            for (i = 0; i < Links.length; i++) {
+                if ((Links[i].getAttribute("data-nokey") === "true") || (Links[i].parentElement.getAttribute("data-nokey") === "true")) {
+                    Links.deleteAt(i);
+                    i--;
+                }
+            }
+        }
+        var n = 1;
+        for (i = 0; i < Links.length; i++) {
+            if (!Links[i].id.includes("Link")) {
+                while ($(Container).find("#Link" + n).length) {
+                    ++n;
+                    if (n > 10) {
+                        break;
+                    }
+                }
+                if (n < 10) {
+                    $("<sup>" + n + "</sup>").appendTo(Links[i]);
+                    Links[i].id = "Link" + n;
+                } else if (n === 10) {
+                    $("<sup>[0]</sup>").appendTo(Links[i]);
+                    Links[i].id = "Link0";
+                    break;
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+};
+$(document).on("keyup", function (e) {
+    // Enables keyboard shortcuts on passages that do not have the "DisableKeyLinks" tag
+    if (!tags().includes("DisableKeyLinks")) {
+        // Trigger next link click on right arrow key or "1" (normal and numpad)
+        if (((e.key === "ArrowRight") || (e.keyCode === 49) || (e.keyCode === 97)) && $("#NextLink")) {
+            if ((!tags().includes("IgnoreArrowKeys")) || ((e.key != "ArrowRight"))) {
+                e.preventDefault();
+                $("#NextLink").click();
+            }
+        }
+        // Trigger link click on keys "0" through "9"
+        if ((e.keyCode > 47) && (e.keyCode < 58)) {
+            if ($("#Link" + (e.keyCode - 48))) {
+                e.preventDefault();
+                $("#Link" + (e.keyCode - 48)).click();
+            }
+        }
+        // Trigger link click on numpad keys "0" through "9"
+        if ((e.keyCode > 95) && (e.keyCode < 106)) {
+            if ($("#Link" + (e.keyCode - 96))) {
+                e.preventDefault();
+                $("#Link" + (e.keyCode - 96)).click();
+            }
+        }
+        // Trigger random click on "." key
+        if (e.key === ".") {
+            e.preventDefault();
+            var Links = $("#passages a");
+            if (Links.length > 0) {
+                Links[Math.floor(Math.random() * Links.length)].click();
+            }
+        }
+        // Trigger back click on left arrow key or backquote
+        if ((e.key === "ArrowLeft") || (e.keyCode === 192)) {
+            if ((!tags().includes("IgnoreArrowKeys")) || ((e.key != "ArrowLeft"))) {
+                e.preventDefault();
+                Engine.backward();
+            }
+        }
+    }
+}); 
+/* Keyboard links - End */
+
+:: UserStylesheet[stylesheet]
+/* Removes the ability to save in a passage when passage is tagged with [no-save] */
+/* 
+body.no-save #menu-item-saves {
+    display: none;
+}
+*/ 
+
+:: Widgets [widget]
+
+<<widget "RoomSeven">>\
+    <<if $ExamineSeven is true>>\
+        [[Open the numbered door]]
+        [[Use keypad]]
+        [[Search cabinet]]
+        [[Open case]]
+        [[Examine carpet]]
+        <<if $Clue is false>>\
+            <<if $PaperEat is false>>\
+                [[Pick up the paper|Read clue]]
+            <</if>>\
+        <</if>>\
+    <</if>>\
+    <<if $TrapdoorFound is true>>\
+        [[Open trapdoor]]
+    <</if>>\
+    [[Lie down]]
+    [[Whistle]]
+    <<if $Lights is false>>\
+        [[Feel around blindly]]
+    <</if>>\
+<</widget>>
+
+<<widget "keypad">>\
+    The number above the door is $Room.
+
+    The keypad has the following buttons available: <<Buttons>>
+
+    There are <<Digits>> digit(s) in the solution.
+
+    <<listbox "$FirstDigit" autoselect>>\
+        <<optionsfrom $Buttons>>\
+    <</listbox>>\
+    <<if $Digits gt 1>>\
+        <<listbox "$SecondDigit" autoselect>>\
+            <<optionsfrom $Buttons>>\
+        <</listbox>>\
+    <</if>>\
+    <<if $Digits gt 2>>\
+        <<listbox "$ThirdDigit" autoselect>>\
+            <<optionsfrom $Buttons>>\
+        <</listbox>>\
+    <</if>>\
+<</widget>>
+
+<<widget "Buttons">>\
+    <<set $Buttons to [0]>>\
+    <<for _i to 2; _i lt $Room; _i++>>\
+        <<if _i lt 10>>\
+            <<run $Buttons.pushUnique(_i)>>\
+        <<else>>\
+            <<if _i is 10>>\
+                <<run $Buttons.pushUnique('A')>>\
+            <<elseif _i is 11>>\
+                <<run $Buttons.pushUnique('B')>>\
+            <<elseif _i is 12>>\
+                <<run $Buttons.pushUnique('C')>>\
+            <<elseif _i is 13>>\
+                <<run $Buttons.pushUnique('D')>>\
+            <<elseif _i is 14>>\
+                <<run $Buttons.pushUnique('E')>>\
+            <<elseif _i is 15>>\
+                <<run $Buttons.pushUnique('F')>>\
+            <<elseif _i is 16>>\
+                <<run $Buttons.pushUnique('G')>>\
+            <<elseif _i is 17>>\
+                <<run $Buttons.pushUnique('H')>>\
+            <<elseif _i is 18>>\
+                <<run $Buttons.pushUnique('I')>>\
+            <<elseif _i is 19>>\
+                <<run $Buttons.pushUnique('J')>>\
+            <<elseif _i is 20>>\
+                <<run $Buttons.pushUnique('K')>>\
+            <<elseif _i is 21>>\
+                <<run $Buttons.pushUnique('L')>>\
+            <<elseif _i is 22>>\
+                <<run $Buttons.pushUnique('M')>>\
+            <<elseif _i is 23>>\
+                <<run $Buttons.pushUnique('N')>>\
+            <<elseif _i is 24>>\
+                <<run $Buttons.pushUnique('O')>>\
+            <<elseif _i is 25>>\
+                <<run $Buttons.pushUnique('P')>>\
+            <<elseif _i is 26>>\
+                <<run $Buttons.pushUnique('Q')>>\
+            <<elseif _i is 27>>\
+                <<run $Buttons.pushUnique('R')>>\
+            <<elseif _i is 28>>\
+                <<run $Buttons.pushUnique('S')>>\
+            <<elseif _i is 29>>\
+                <<run $Buttons.pushUnique('T')>>\
+            <<elseif _i is 30>>\
+                <<run $Buttons.pushUnique('U')>>\
+            <<elseif _i is 31>>\
+                <<run $Buttons.pushUnique('V')>>\
+            <<elseif _i is 32>>\
+                <<run $Buttons.pushUnique('W')>>\
+            <<elseif _i is 33>>\
+                <<run $Buttons.pushUnique('X')>>\
+            <<elseif _i is 34>>\
+                <<run $Buttons.pushUnique('Y')>>\
+            <<elseif _i is 35>>\
+                <<run $Buttons.pushUnique('Z')>>\
+            <</if>>\
+        <</if>>\
+    <</for>>\
+    <<print $Buttons>>\
+<</widget>>
+
+<<widget "Digits">>\
+    <<if $Room is 36>>\
+        3<<set $Digits to 3>>\
+    <<elseif $Room is 31946 or $Room is 1>>\
+        1<<set $Digits to 1>>\
+    <<else>>\
+        2<<set $Digits to 2>>\
+    <</if>>\
+<</widget>>
+
+<<widget "CheckSolution">>\
+    <<set $Combination to []>>\
+    <<run $Combination.push($FirstDigit)>>\
+    <<if $Digits is 1>>\
+        <<if $Room is 1>>\
+            <<if $FirstDigit is 0>>\
+                <<CorrectCombination>>\
+            <<else>>\
+                <<IncorrectCombination>>\
+            <</if>>\
+        <<elseif $Room is 31946>>\
+            <<if $FirstDigit is 1>>\
+                <<CorrectCombination>>\
+                <<set $Room to 1>>\
+            <<else>>\
+                <<IncorrectCombination>>\
+            <</if>>\
+        <</if>>\
+    <<elseif $Digits is 3>>\
+        <<run $Combination.push($SecondDigit)>>\
+        <<run $Combination.push($ThirdDigit)>>\
+        <<if >>\
+    <<elseif $Digits is 2>>\
+        <<run $Combination.push($SecondDigit)>>\
+        <<if $FirstDigit is 0>>\
+            <<set $Room to $SecondDigit>>\
+        <<else>>\
+        <</if>>\
+    <</if>>\
+<</widget>>
+
+<<widget "CorrectCombination">>\
+<<if $Room is 1>>\
+    You have entered the correct combination.
+
+    The door unlocks.\
+<<else>>\
+    You have entered an acceptable combination. 
+
+    The number above the door changes to $Room.
+<</if>>\
+<</widget>>\
+
+<<widget "IncorrectCombination">>\
+You have entered the incorrect combination.
+
+$X is not the solution. /* Convert combination to base-$Room */
+<</widget>>
+
+<<widget "Calculator">>
+<</widget>>
+
+<<widget "Clue">>\
+    Escape the Base.
+    It's not a race.
+    If you want to win,
+    remember ten.
+    Look around you.
+    One is the one.
+    One is the won.
+    Numbers are tricky.
+    Check the Base,
+    check the face.
+    And don't forget 
+    the golden case.
+
+    You don't know where you are.
+    You may be near or far.
+    Don't repeat your action then,
+    it's really not Base 10 again.
+
+    I chose to warn you,
+    just in case...
+
+    Escape from Base One!
+<</widget>>
+
+:: StoryInit
+/* Locks */
+<<set $DoorLock to true>>
+<<set $CabinetLock to true>>
+<<set $TrapdoorLock to true>>
+<<set $CaseLock to true>>
+
+/* Events and Conditions */
+<<set $Room to 7>>
+<<set $Lights to false>>
+<<set $PaperEat to false>>
+<<set $FirstDigit to 0>>
+<<set $SecondDigit to 0>>
+<<set $ThirdDigit to 0>>
+
+/* Discoveries */
+<<set $TrapdoorFound to false>>
+
+/* Items */
+<<set $Clue to false>>
+
+:: StoryCaption 
+[[Inventory]]
+<<if $Lights is true>>
+    [[Examine Room|Examine Seven]]
+<</if>>\
+
+:: Inventory [noreturn menu]
+Inventory:
+<<if $Clue is true>>
+    Paper: [[Read It|Read paper]] [[Eat It|Eat clue]]
+<</if>>
+[[Return|Start]] /* Needs to be previous??? litched... */
+
+:: Read paper [noreturn menu]
+<<Clue>>
+[[Return|previous()]]
+
+:: Eat clue [noreturn menu]
+You eat the paper. It tastes bad.
+<<set $Clue to false>> <<set $PaperEat to true>>
+[[Return|previous()]]
+
+:: Start 
+You are standing in a <<if $Lights is false>>dark <</if>>room.
+
+<<RoomSeven>>
+
+:: Examine Seven
+The room is relatively  small. 
+
+There is a door with a screen above it. The screen displays the number $Room.
+
+There is a keypad next to the door. 
+
+There is a cabinet in the back of the room. A golden case rests on top of it.
+
+The floor is made of wooden boards and a carpet rests in the middle of the room.<br>
+<<if $TrapdoorFound is true>>\
+    There is a trapdoor under the carpet.<br>
+<</if>>\
+<<if $Clue is false>>\
+    There is a piece of paper on the carpet.<br>
+<</if>>\
+<<set $ExamineSeven to true>>\
+<<RoomSeven>>
+
+:: Feel around blindly
+You feel around the dark room, walking forward with your hands outstretched.
+
+Your hands make contact with a wall.
+
+[[Feel along the wall]]
+[[Walk back to where you started|Start]]
+
+:: Feel along the wall
+You run your hands up and down across the wall and find what feels like a switch.
+
+[[Flip the switch]]
+[[Leave the switch alone]]
+
+:: Flip the switch
+You flip the switch.
+
+Lights turn on in the room. You can now see.
+<<set $Lights to true>>
+[[Look around the room|Examine Seven]]
+
+:: Leave the switch alone
+You leave the wall and return to the general darkness of the room.
+
+<<RoomSeven>>
+
+:: Lie down
+You lie down on the floor<<if $Lights is true>>, resting on a carpet<</if>>. It feels soft. 
+
+You hear the floor creaking beneath you.
+
+Nothing happens and you stand back up. 
+
+<<RoomSeven>>
+
+:: Whistle
+You whistle in the <<if $Lights is false>>dark <</if>>room. 
+
+Your voice echoes through the room as though it were cavernous.
+
+<<RoomSeven>>
+
+:: Read clue
+You pick up the paper from the carpet. There are words written on it. 
+
+You read the words on the paper aloud:
+
+//<<Clue>>//
+
+Your voice echoes through the room as though it were cavernous.
+<<if $CabinetLock is true>>
+    As you finish reading you hear a clicking noise from behind you.
+    <<set $CabinetLock to false>>
+    The sound appears to have come from the cabinet.
+<</if>>
+You fold up the paper and put it in your pocket. 
+<<set $Clue to true>>
+"""*""" //<b>The paper has been added to your inventory.</b>// """*"""
+
+<<RoomSeven>>
+
+:: Search cabinet
+<<if $CabinetLock is true>>\
+    The cabinet is locked. 
+<<else>>\
+    You search the cabinet and find another clue.
+<</if>>
+<<RoomSeven>>
+
+
+:: Open case 
+<<if $CaseLock is true>>\
+    The case is locked by a combination lock.
+
+    [[Enter combination|Case combination]]
+<<else>>\
+    You open the case... /* WIP */
+
+    <<RoomSeven>>
+<</if>>
+
+
+:: Case combination
+Work in Progress... Come back later
+
+[[Return|previous()]]
+
+:: Examine carpet
+It is a red and brown carpet. It feels soft to the touch.
+
+[[Lift it|Lift carpet]]
+<<RoomSeven>>
+
+:: Lift carpet
+You lift the carpet and find a trapdoor.
+<<set $TrapdoorFound to true>>
+<<RoomSeven>>
+
+:: Open the door
+<<if $DoorLock is true>>
+    It is locked. Maybe you could try the keypad. 
+<<else>>
+    The door opens...
+<</if>>
+<<RoomSeven>>
+
+:: Open trapdoor
+<<if $TrapdoorLock is true>>\
+    It is locked.
+<<else>>\
+    You open the trapdoor... /* WIP */
+<</if>>
+<<RoomSeven>>
+
+:: Use keypad
+You approach the keypad. 
+
+<<keypad>>
+
+[[Enter solution]]
+
+:: Enter solution
+<<CheckSolution>>
